@@ -45,7 +45,7 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
   Future<void> _startRecording(String source) async {
     if (source == 'bluetooth' && !_hasBluetoothConnection) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('블루투스 이어폰이 연결되지 않았습니다.')),
+        SnackBar(content: Text('블루투스 이어폰이 연결되지 않다.')),
       );
       return;
     }
