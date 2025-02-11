@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 
 void main() {
@@ -36,50 +35,85 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
     _initializeRecorder();
   }
 
+  ///  필수 권한 요청 (저장소 + 마이크)
+  Future<void> _requestPermissions() async {
+    await [
+      Permission.microphone,
+      Permission.storage,
+    ].request();
+  }
+
   Future<void> _initializeRecorder() async {
-    await Permission.microphone.request();
-    await Permission.bluetooth.request();
+    await _requestPermissions();
     await _recorder.openRecorder();
   }
 
+  ///  녹음 시작 (경로: `/storage/emulated/0/Download/record/`)
   Future<void> _startRecording(String source) async {
     if (source == 'bluetooth' && !_hasBluetoothConnection) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('블루투스 이어폰이 연결되지 않다.')),
+        SnackBar(content: Text('블루투스 이어폰이 연결되지 않았습니다.')),
       );
       return;
     }
 
-    final directory = await getApplicationDocumentsDirectory();
-    final filePath = '${directory.path}/audio_${source}_record.wav';
+    try {
+      /// "다운로드/record" 폴더 설정
+      final directory = Directory('/storage/emulated/0/Download/record');
 
-    setState(() {
-      _recordingSource = source;
-      _filePath = filePath;
-    });
+      if (!await directory.exists()) {
+        await directory.create(recursive: true); // 폴더가 없으면 생성
+      }
 
-    await _recorder.startRecorder(toFile: filePath);
-    setState(() {
-      _isRecording = true;
-    });
+      final filePath = '${directory.path}/audio_${source}_record.wav';
+
+      setState(() {
+        _recordingSource = source;
+        _filePath = filePath;
+      });
+
+      await _recorder.startRecorder(toFile: filePath);
+      setState(() {
+        _isRecording = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('녹음이 시작되었습니다.')),
+      );
+    } catch (e) {
+      print("녹음 시작 오류: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('녹음을 시작할 수 없습니다: $e')),
+      );
+    }
   }
 
+  ///  녹음 중지
   Future<void> _stopRecording() async {
-    await _recorder.stopRecorder();
-    setState(() {
-      _isRecording = false;
-      _recordingSource = '';
-    });
+    try {
+      await _recorder.stopRecorder();
+      setState(() {
+        _isRecording = false;
+        _recordingSource = '';
+      });
 
-    // 녹음 완료 후 재생 페이지로 이동
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PlaybackScreen(filePath: _filePath),
-      ),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('녹음이 저장되었습니다:\n$_filePath')),
+      );
+
+      // 녹음 완료 후 재생 페이지로 이동
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PlaybackScreen(filePath: _filePath),
+        ),
+      );
+    } catch (e) {
+      print("녹음 중지 오류: $e");
+    }
   }
 
+  ///  블루투스 상태 확인 (가짜 데이터)
   Future<void> _checkBluetoothConnection() async {
     setState(() {
       _hasBluetoothConnection = true;
@@ -90,8 +124,8 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
   }
 
   @override
-  void dispose() {
-    _recorder.closeRecorder();
+  void dispose() async {
+    await _recorder.closeRecorder();
     super.dispose();
   }
 
