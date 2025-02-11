@@ -1,7 +1,8 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:io';
 
 void main() {
   runApp(MyApp());
@@ -28,6 +29,7 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
   String _recordingSource = '';
   String _filePath = '';
   bool _hasBluetoothConnection = false;
+  Timer? _recordingTimer; //  녹음 제한 시간 타이머
 
   @override
   void initState() {
@@ -35,7 +37,7 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
     _initializeRecorder();
   }
 
-  ///  필수 권한 요청 (저장소 + 마이크)
+  ///  필수 권한 요청 (마이크 + 저장소)
   Future<void> _requestPermissions() async {
     await [
       Permission.microphone,
@@ -48,7 +50,7 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
     await _recorder.openRecorder();
   }
 
-  ///  녹음 시작 (경로: `/storage/emulated/0/Download/record/`)
+  ///  녹음 시작 (8.76초 제한)
   Future<void> _startRecording(String source) async {
     if (source == 'bluetooth' && !_hasBluetoothConnection) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -58,7 +60,7 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
     }
 
     try {
-      /// "다운로드/record" 폴더 설정
+      //  "다운로드/record" 폴더 설정
       final directory = Directory('/storage/emulated/0/Download/record');
 
       if (!await directory.exists()) {
@@ -78,8 +80,14 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('녹음이 시작되었습니다.')),
+        SnackBar(content: Text('녹음이 시작되었습니다. (최대 8.76초)')),
       );
+
+      //  8.76초 후 자동으로 녹음 중지
+      _recordingTimer = Timer(Duration(milliseconds: 8760), () {
+        _stopRecording(autoStopped: true);
+      });
+
     } catch (e) {
       print("녹음 시작 오류: $e");
       ScaffoldMessenger.of(context).showSnackBar(
@@ -88,20 +96,27 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
     }
   }
 
-  ///  녹음 중지
-  Future<void> _stopRecording() async {
+  ///  녹음 중지 (자동 중지 여부 추가)
+  Future<void> _stopRecording({bool autoStopped = false}) async {
     try {
       await _recorder.stopRecorder();
+      _recordingTimer?.cancel(); //  타이머 취소
       setState(() {
         _isRecording = false;
         _recordingSource = '';
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('녹음이 저장되었습니다:\n$_filePath')),
+        SnackBar(
+          content: Text(
+            autoStopped
+                ? '녹음이 자동으로 중지되었습니다. (8.76초 초과)\n$_filePath'
+                : '녹음이 저장되었습니다:\n$_filePath',
+          ),
+        ),
       );
 
-      // 녹음 완료 후 재생 페이지로 이동
+      //  녹음 완료 후 재생 페이지로 이동
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -126,6 +141,7 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
   @override
   void dispose() async {
     await _recorder.closeRecorder();
+    _recordingTimer?.cancel(); //  타이머 정리
     super.dispose();
   }
 
@@ -178,7 +194,7 @@ class _MicrophoneRecorderState extends State<MicrophoneRecorder> {
             SizedBox(height: 20),
             if (_isRecording)
               ElevatedButton(
-                onPressed: _stopRecording,
+                onPressed: () => _stopRecording(),
                 child: Text('녹음 중지'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
