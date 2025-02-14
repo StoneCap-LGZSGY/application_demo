@@ -52,6 +52,16 @@ android {
             signingConfig = signingConfigs.debug
         }
     }
+
+    aaptOptions {
+        noCompress 'tflite'
+        noCompress 'lite'
+    }
+
+    dependencies {
+        implementation 'org.tensorflow:tensorflow-lite:2.9.0'  // TensorFlow Lite 추가
+    }
+
 }
 
 flutter {
